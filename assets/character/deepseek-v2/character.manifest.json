@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "canvas": {
+    "width": 1024,
+    "height": 1536
+  },
+  "layers": [
+    {
+      "name": "back-hair",
+      "file": "layers/back-hair.png",
+      "zIndex": 10,
+      "anchor": { "x": 0.5, "y": 0.31 },
+      "motionGroup": "hair",
+      "required": true
+    },
+    {
+      "name": "tail",
+      "file": "layers/tail.png",
+      "zIndex": 20,
+      "anchor": { "x": 0.71, "y": 0.66 },
+      "motionGroup": "tail",
+      "required": true
+    },
+    {
+      "name": "torso",
+      "file": "layers/torso.png",
+      "zIndex": 30,
+      "anchor": { "x": 0.49, "y": 0.61 },
+      "motionGroup": "body",
+      "required": true
+    },
+    {
+      "name": "head-base",
+      "file": "layers/head-base.png",
+      "zIndex": 40,
+      "anchor": { "x": 0.49, "y": 0.23 },
+      "motionGroup": "head",
+      "required": true
+    },
+    {
+      "name": "eye-left-white",
+      "file": "layers/eye-left-white.png",
+      "zIndex": 50,
+      "anchor": { "x": 0.45, "y": 0.195 },
+      "motionGroup": "gaze",
+      "required": true
+    },
+    {
+      "name": "eye-left-iris",
+      "file": "layers/eye-left-iris.png",
+      "zIndex": 51,
+      "anchor": { "x": 0.45, "y": 0.195 },
+      "motionGroup": "gaze",
+      "required": true
+    },
+    {
+      "name": "eye-left-upper-lid",
+      "file": "layers/eye-left-upper-lid.png",
+      "zIndex": 52,
+      "anchor": { "x": 0.45, "y": 0.19 },
+      "motionGroup": "blink",
+      "required": true
+    },
+    {
+      "name": "eye-right-white",
+      "file": "layers/eye-right-white.png",
+      "zIndex": 53,
+      "anchor": { "x": 0.52, "y": 0.194 },
+      "motionGroup": "gaze",
+      "required": true
+    },
+    {
+      "name": "eye-right-iris",
+      "file": "layers/eye-right-iris.png",
+      "zIndex": 54,
+      "anchor": { "x": 0.52, "y": 0.194 },
+      "motionGroup": "gaze",
+      "required": true
+    },
+    {
+      "name": "eye-right-upper-lid",
+      "file": "layers/eye-right-upper-lid.png",
+      "zIndex": 55,
+      "anchor": { "x": 0.52, "y": 0.189 },
+      "motionGroup": "blink",
+      "required": true
+    },
+    {
+      "name": "brow-left",
+      "file": "layers/brow-left.png",
+      "zIndex": 56,
+      "anchor": { "x": 0.45, "y": 0.177 },
+      "motionGroup": "brow",
+      "required": true
+    },
+    {
+      "name": "brow-right",
+      "file": "layers/brow-right.png",
+      "zIndex": 57,
+      "anchor": { "x": 0.52, "y": 0.176 },
+      "motionGroup": "brow",
+      "required": true
+    },
+    {
+      "name": "mouth-neutral",
+      "file": "layers/mouth-neutral.png",
+      "zIndex": 58,
+      "anchor": { "x": 0.483, "y": 0.224 },
+      "motionGroup": "mouth",
+      "required": true
+    },
+    {
+      "name": "mouth-smile",
+      "file": "layers/mouth-smile.png",
+      "zIndex": 59,
+      "anchor": { "x": 0.483, "y": 0.224 },
+      "motionGroup": "mouth",
+      "required": true
+    },
+    {
+      "name": "mouth-talk",
+      "file": "layers/mouth-talk.png",
+      "zIndex": 60,
+      "anchor": { "x": 0.483, "y": 0.224 },
+      "motionGroup": "mouth",
+      "required": true
+    },
+    {
+      "name": "mouth-worried",
+      "file": "layers/mouth-worried.png",
+      "zIndex": 61,
+      "anchor": { "x": 0.483, "y": 0.224 },
+      "motionGroup": "mouth",
+      "required": true
+    },
+    {
+      "name": "front-hair",
+      "file": "layers/front-hair.png",
+      "zIndex": 72,
+      "anchor": { "x": 0.49, "y": 0.2 },
+      "motionGroup": "hair",
+      "required": true
+    },
+    {
+      "name": "side-hair-left",
+      "file": "layers/side-hair-left.png",
+      "zIndex": 70,
+      "anchor": { "x": 0.38, "y": 0.29 },
+      "motionGroup": "hair",
+      "required": true
+    },
+    {
+      "name": "side-hair-right",
+      "file": "layers/side-hair-right.png",
+      "zIndex": 71,
+      "anchor": { "x": 0.61, "y": 0.3 },
+      "motionGroup": "hair",
+      "required": true
+    },
+    {
+      "name": "hand-front",
+      "file": "layers/hand-front.png",
+      "zIndex": 80,
+      "anchor": { "x": 0.33, "y": 0.33 },
+      "motionGroup": "hand",
+      "required": true
+    },
+    {
+      "name": "core",
+      "file": "layers/core.png",
+      "zIndex": 90,
+      "anchor": { "x": 0.32, "y": 0.267 },
+      "motionGroup": "prop",
+      "required": true
+    },
+    {
+      "name": "bubbles",
+      "file": "layers/bubbles.png",
+      "zIndex": 101,
+      "anchor": { "x": 0.5, "y": 0.5 },
+      "motionGroup": "effects",
+      "required": true
+    },
+    {
+      "name": "sonar",
+      "file": "layers/sonar.png",
+      "zIndex": 0,
+      "anchor": { "x": 0.5, "y": 0.25 },
+      "motionGroup": "effects",
+      "required": true
+    }
+  ]
+}
