@@ -27,6 +27,13 @@ describe('IdleActionScheduler', () => {
     expect(scheduler.tick(210_000)).toMatchObject([{ name: 'sleep' }]);
   });
 
+  test('schedules a midpoint random sleep delay inside the approved interval', () => {
+    const scheduler = new IdleActionScheduler(() => snapshot(), { random: () => 0.5 });
+
+    expect(scheduler.tick(179_999)).not.toContainEqual(expect.objectContaining({ name: 'sleep' }));
+    expect(scheduler.tick(180_000)).toMatchObject([{ name: 'sleep' }]);
+  });
+
   test('never repeats a special action immediately', () => {
     const scheduler = new IdleActionScheduler(() => snapshot(), { random: () => 0 });
 
@@ -61,6 +68,35 @@ describe('IdleActionScheduler', () => {
     const scheduler = new IdleActionScheduler(() => current, { random: () => 0 });
 
     expect(scheduler.tick(15_000)).toEqual([]);
+  });
+
+  test('emits sleep on schedule even when visual motion is off', () => {
+    const current = { ...snapshot(), motionLevel: 'off' as const };
+    const scheduler = new IdleActionScheduler(() => current, { random: () => 0 });
+
+    expect(scheduler.tick(150_000)).toMatchObject([{ name: 'sleep' }]);
+  });
+
+  test('uses action weights when choosing an idle action', () => {
+    const values = [0, 0, 0.99, 0, 0];
+    const scheduler = new IdleActionScheduler(() => snapshot(), {
+      random: () => values.shift() ?? 0,
+    });
+
+    expect(scheduler.tick(5_000)).toMatchObject([{ name: 'tail-sway' }]);
+    expect(scheduler.tick(10_000)).toMatchObject([{ name: 'blink' }]);
+  });
+
+  test('applies each action cooldown independently', () => {
+    const values = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const scheduler = new IdleActionScheduler(() => snapshot(), {
+      random: () => values.shift() ?? 0,
+    });
+
+    expect(scheduler.tick(5_000)).toMatchObject([{ name: 'blink' }]);
+    expect(scheduler.tick(10_000)).toMatchObject([{ name: 'look-away' }]);
+    expect(scheduler.tick(15_000)).toMatchObject([{ name: 'adjust-stance' }]);
+    expect(scheduler.tick(25_000)).toMatchObject([{ name: 'blink' }]);
   });
 });
 

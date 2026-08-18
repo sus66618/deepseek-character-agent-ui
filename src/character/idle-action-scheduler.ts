@@ -2,15 +2,19 @@ import type { CharacterSnapshot, MotionCommand } from './types';
 
 const MIN_SLEEP_DELAY_MS = 150_000;
 const MAX_SLEEP_DELAY_MS = 210_000;
-const SPECIAL_ACTION_INTERVAL_MS = 15_000;
+const MIN_SPECIAL_ACTION_INTERVAL_MS = 5_000;
+const MAX_SPECIAL_ACTION_INTERVAL_MS = 20_000;
 
 const SPECIAL_ACTIONS = [
-  { name: 'blink', channel: 'face', durationMs: 180 },
-  { name: 'look-away', channel: 'gaze', durationMs: 1_200 },
-  { name: 'adjust-stance', channel: 'body', durationMs: 1_500 },
-  { name: 'touch-hair', channel: 'body', durationMs: 1_400 },
-  { name: 'tail-sway', channel: 'prop', durationMs: 1_600 },
-] as const satisfies readonly Pick<MotionCommand, 'name' | 'channel' | 'durationMs'>[];
+  { name: 'blink', channel: 'face', durationMs: 180, weight: 6, cooldownMs: 20_000 },
+  { name: 'look-away', channel: 'gaze', durationMs: 1_200, weight: 3, cooldownMs: 12_000 },
+  { name: 'adjust-stance', channel: 'body', durationMs: 1_500, weight: 2, cooldownMs: 30_000 },
+  { name: 'touch-hair', channel: 'body', durationMs: 1_400, weight: 1, cooldownMs: 45_000 },
+  { name: 'tail-sway', channel: 'prop', durationMs: 1_600, weight: 4, cooldownMs: 10_000 },
+] as const satisfies readonly (Pick<MotionCommand, 'name' | 'channel' | 'durationMs'> & {
+  weight: number;
+  cooldownMs: number;
+})[];
 
 export interface IdleActionSchedulerOptions {
   random?: () => number;
@@ -23,7 +27,8 @@ export class IdleActionScheduler {
   private idleEnteredAt: number | null = null;
   private sleepAt = 0;
   private nextSpecialActionAt = 0;
-  private lastSpecialActionIndex = -1;
+  private lastSpecialActionName: string | null = null;
+  private readonly actionPerformedAt = new Map<string, number>();
   private sleepIssued = false;
 
   constructor(
@@ -46,17 +51,16 @@ export class IdleActionScheduler {
       this.startIdleSchedule(snapshot.enteredAt);
     }
 
-    if (snapshot.motionLevel === 'off') {
-      return [];
-    }
-
     if (!this.sleepIssued && now >= this.sleepAt) {
       this.sleepIssued = true;
       return [this.command('sleep', 'body', 100, 800, now)];
     }
 
+    if (snapshot.motionLevel === 'off') {
+      return [];
+    }
+
     if (!this.sleepIssued && now >= this.nextSpecialActionAt) {
-      this.nextSpecialActionAt = now + SPECIAL_ACTION_INTERVAL_MS;
       return [this.nextSpecialAction(now)];
     }
 
@@ -70,8 +74,9 @@ export class IdleActionScheduler {
 
     this.idleEnteredAt = enteredAt;
     this.sleepAt = enteredAt + sleepDelay;
-    this.nextSpecialActionAt = enteredAt + SPECIAL_ACTION_INTERVAL_MS;
-    this.lastSpecialActionIndex = -1;
+    this.nextSpecialActionAt = enteredAt + this.specialActionInterval();
+    this.lastSpecialActionName = null;
+    this.actionPerformedAt.clear();
     this.sleepIssued = false;
   }
 
@@ -81,18 +86,50 @@ export class IdleActionScheduler {
   }
 
   private nextSpecialAction(now: number): MotionCommand {
-    let index = Math.min(
-      SPECIAL_ACTIONS.length - 1,
-      Math.floor(Math.min(1, Math.max(0, this.random())) * SPECIAL_ACTIONS.length),
+    const availableActions = SPECIAL_ACTIONS.filter((action) => this.isAvailable(action, now));
+    const action = this.selectWeightedAction(
+      availableActions.length > 0 ? availableActions : SPECIAL_ACTIONS,
     );
 
-    if (index === this.lastSpecialActionIndex) {
-      index = (index + 1) % SPECIAL_ACTIONS.length;
+    this.lastSpecialActionName = action.name;
+    this.actionPerformedAt.set(action.name, now);
+    this.nextSpecialActionAt = now + this.specialActionInterval();
+    return this.command(action.name, action.channel, 10, action.durationMs, now);
+  }
+
+  private isAvailable(
+    action: typeof SPECIAL_ACTIONS[number],
+    now: number,
+  ): boolean {
+    const lastPerformedAt = this.actionPerformedAt.get(action.name);
+    return action.name !== this.lastSpecialActionName
+      && (lastPerformedAt === undefined || now - lastPerformedAt >= action.cooldownMs);
+  }
+
+  private selectWeightedAction(
+    actions: readonly typeof SPECIAL_ACTIONS[number][],
+  ): typeof SPECIAL_ACTIONS[number] {
+    const totalWeight = actions.reduce((total, action) => total + action.weight, 0);
+    let threshold = this.normalizedRandom() * totalWeight;
+
+    for (const action of actions) {
+      threshold -= action.weight;
+      if (threshold < 0) {
+        return action;
+      }
     }
 
-    this.lastSpecialActionIndex = index;
-    const action = SPECIAL_ACTIONS[index]!;
-    return this.command(action.name, action.channel, 10, action.durationMs, now);
+    return actions[actions.length - 1]!;
+  }
+
+  private specialActionInterval(): number {
+    return MIN_SPECIAL_ACTION_INTERVAL_MS + this.normalizedRandom()
+      * (MAX_SPECIAL_ACTION_INTERVAL_MS - MIN_SPECIAL_ACTION_INTERVAL_MS);
+  }
+
+  private normalizedRandom(): number {
+    const value = this.random();
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
   }
 
   private command(
