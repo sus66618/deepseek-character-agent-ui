@@ -1,24 +1,9 @@
-# 依赖与构建产物
 node_modules/
 dist/
 coverage/
-
-# 测试与运行时产物
-playwright-report/
 test-results/
-.superpowers/
 .worktrees/
-runtime/
-evidence/
-
-# 本地环境与敏感信息
-.env
-.env.*
-!.env.example
-*.log
-
-# 编辑器与系统文件
-.idea/
-.vscode/
-.DS_Store
-Thumbs.db
+playwright-report/
+.superpowers/
+evidence/runtime/
+assets/character/deepseek-v2/source/*.psd~
