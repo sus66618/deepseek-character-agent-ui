@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import unittest
 from pathlib import Path
@@ -14,6 +15,7 @@ ASSET_ROOT = PROJECT_ROOT / "assets" / "character" / "deepseek-v2"
 LAYER_DIR = ASSET_ROOT / "layers"
 PSD_PATH = ASSET_ROOT / "source" / "deepseek-v2-layered.psd"
 EVIDENCE_DIR = PROJECT_ROOT / "evidence" / "assets"
+BUILD_SCRIPT = PROJECT_ROOT / "scripts" / "build-character-assets.py"
 
 REQUIRED_LAYERS = (
     "back-hair",
@@ -102,6 +104,24 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def load_builder():
+    """加载含连字符文件名的构建脚本，供行为测试直接调用。"""
+    spec = importlib.util.spec_from_file_location("character_asset_builder", BUILD_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("无法加载角色资产构建脚本")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_layers() -> dict[str, Image.Image]:
+    """读取真实交付层，避免 QA 测试偷偷依赖临时素材。"""
+    return {
+        name: Image.open(LAYER_DIR / f"{name}.png").convert("RGBA")
+        for name in REQUIRED_LAYERS
+    }
+
+
 class CharacterAssetBuildTest(unittest.TestCase):
     def test_exports_exact_inventory_as_real_rgba_canvases(self) -> None:
         actual = sorted(path.stem for path in LAYER_DIR.glob("*.png"))
@@ -151,6 +171,66 @@ class CharacterAssetBuildTest(unittest.TestCase):
             self.assertLessEqual(box[2], allowed[2], name)
             self.assertLessEqual(box[3], allowed[3], name)
 
+    def test_blink_is_reproducible_from_delivered_manifest_layers_only(self) -> None:
+        builder = load_builder()
+        blink_visible = getattr(builder, "BLINK_VISIBLE", None)
+        self.assertIsNotNone(
+            blink_visible,
+            "必须公开只含交付层的 BLINK_VISIBLE 合成契约",
+        )
+        layers = load_layers()
+        expected = builder.transparent_composite(layers, visible=blink_visible)
+        _, displays = builder.make_qa_scenarios(layers)
+        self.assertTrue(
+            np.array_equal(
+                np.asarray(displays["blink"]),
+                np.asarray(builder.on_checker(expected)),
+            ),
+            "blink QA 不得叠加 manifest 之外的临时眼睑",
+        )
+
+    def test_closed_lids_do_not_ship_open_iris_pixels(self) -> None:
+        for side in ("left", "right"):
+            with Image.open(LAYER_DIR / f"eye-{side}-upper-lid.png") as image:
+                pixels = np.asarray(image.convert("RGBA"))
+            visible = pixels[:, :, 3] > 32
+            rgb = pixels[:, :, :3].astype(np.int16)
+            bright_iris = (
+                visible
+                & (rgb[:, :, 2] > 130)
+                & (rgb[:, :, 2] - rgb[:, :, 0] > 35)
+                & (rgb[:, :, 2] - rgb[:, :, 1] > 15)
+                & (rgb[:, :, 0] < 160)
+            )
+            self.assertLessEqual(
+                int(np.count_nonzero(bright_iris)),
+                80,
+                f"{side} 闭眼层仍夹带睁眼虹膜",
+            )
+            self.assertGreaterEqual(
+                int(np.count_nonzero(visible)),
+                650,
+                f"{side} 闭眼层缺少眼窝阴影与渐细睫毛素材",
+            )
+
+    def test_four_mouth_layers_are_clean_textured_face_parts(self) -> None:
+        for name in ("mouth-neutral", "mouth-smile", "mouth-talk", "mouth-worried"):
+            with Image.open(LAYER_DIR / f"{name}.png") as image:
+                pixels = np.asarray(image.convert("RGBA"))
+                box = image.getchannel("A").getbbox()
+            self.assertIsNotNone(box, name)
+            assert box is not None
+            self.assertGreaterEqual(box[0], 460, name)
+            self.assertGreaterEqual(box[1], 332, name)
+            self.assertLessEqual(box[2], 540, name)
+            self.assertLessEqual(box[3], 378, f"{name} 混入下巴或领口")
+            visible_rgb = pixels[:, :, :3][pixels[:, :, 3] > 32]
+            self.assertGreaterEqual(
+                len(np.unique(visible_rgb, axis=0)),
+                24,
+                f"{name} 是低信息量几何占位，不是绘制嘴部素材",
+            )
+
     def test_psd_contains_seven_named_groups_and_every_layer(self) -> None:
         from psd_tools import PSDImage
 
@@ -185,6 +265,40 @@ class CharacterAssetBuildTest(unittest.TestCase):
             metrics = evidence["seamScenarios"][scenario]
             self.assertEqual(metrics["originalPositionGhostPixels"], 0, scenario)
 
+        for scenario in ("blink", "gaze", "hair", "hand", "tail"):
+            metrics = evidence["seamScenarios"][scenario]
+            self.assertIn("newInteriorHolePixels", metrics, scenario)
+            self.assertIn("largestNewDarkComponentPixels", metrics, scenario)
+            self.assertIn("newDisconnectedComponents", metrics, scenario)
+
+    def test_visual_proxy_metrics_reject_a_deliberately_broken_composite(self) -> None:
+        builder = load_builder()
+        metric_fn = getattr(builder, "visual_proxy_metrics", None)
+        self.assertIsNotNone(
+            metric_fn,
+            "必须从实际合成图计算视觉代理指标",
+        )
+        reference = np.zeros((128, 128, 4), dtype=np.uint8)
+        reference[20:108, 20:108] = (244, 205, 196, 255)
+        broken = reference.copy()
+        broken[20:108, 61:65, 3] = 0
+        broken[20:108, 61:65, :3] = 0
+        broken[20:108, 55:59, :3] = (18, 20, 28)
+        good_metrics = metric_fn(
+            Image.fromarray(reference, mode="RGBA"),
+            Image.fromarray(reference, mode="RGBA"),
+        )
+        bad_metrics = metric_fn(
+            Image.fromarray(reference, mode="RGBA"),
+            Image.fromarray(broken, mode="RGBA"),
+        )
+        self.assertEqual(good_metrics["newInteriorHolePixels"], 0)
+        self.assertEqual(good_metrics["largestNewDarkComponentPixels"], 0)
+        self.assertEqual(good_metrics["newDisconnectedComponents"], 0)
+        self.assertGreater(bad_metrics["newInteriorHolePixels"], 0)
+        self.assertGreater(bad_metrics["largestNewDarkComponentPixels"], 0)
+        self.assertGreater(bad_metrics["newDisconnectedComponents"], 0)
+
     def test_exports_all_six_full_size_visual_qa_scenarios(self) -> None:
         expected = {
             "neutral.png": (1024, 1536),
@@ -201,7 +315,10 @@ class CharacterAssetBuildTest(unittest.TestCase):
 
     def test_exports_user_friendly_movable_preview(self) -> None:
         with Image.open(EVIDENCE_DIR / "movable-layer-preview.png") as image:
-            self.assertEqual(image.size, (1920, 1080))
+            self.assertEqual(image.size, (2400, 1800))
+            self.assertIn(image.mode, ("RGB", "RGBA"))
+        with Image.open(EVIDENCE_DIR / "mouth-expressions.png") as image:
+            self.assertEqual(image.size, (2048, 1024))
             self.assertIn(image.mode, ("RGB", "RGBA"))
 
 

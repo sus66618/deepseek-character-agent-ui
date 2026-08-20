@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSET_ROOT = ROOT / "assets" / "character" / "deepseek-v2"
 ORIGINAL_PATH = ASSET_ROOT / "source" / "original.png"
 SUBJECT_PATH = ASSET_ROOT / "source" / "subject-rgba.png"
+BLINK_REFERENCE_PATH = ASSET_ROOT / "source" / "face-blink-reference.png"
 LAYER_DIR = ASSET_ROOT / "layers"
 PSD_PATH = ASSET_ROOT / "source" / "deepseek-v2-layered.psd"
 EVIDENCE_DIR = ROOT / "evidence" / "assets"
@@ -28,6 +29,9 @@ EXPECTED_ORIGINAL_SHA256 = (
 )
 EXPECTED_SUBJECT_SHA256 = (
     "01519D11A7CC15BB23A2EF324CE27B8EDCC01C7DCB9F4BA62855E72E7D385A82"
+)
+EXPECTED_BLINK_REFERENCE_SHA256 = (
+    "C39229B9119E102838354FE7A055CE11B0293C353DF01E5A7E42A7073DC1AC8C"
 )
 
 LAYER_NAMES = (
@@ -118,10 +122,8 @@ NEUTRAL_VISIBLE = {
     "head-base",
     "eye-left-white",
     "eye-left-iris",
-    "eye-left-upper-lid",
     "eye-right-white",
     "eye-right-iris",
-    "eye-right-upper-lid",
     "brow-left",
     "brow-right",
     "mouth-neutral",
@@ -131,6 +133,24 @@ NEUTRAL_VISIBLE = {
     "core",
     "hand-front",
     "bubbles",
+}
+
+BLINK_VISIBLE = (
+    NEUTRAL_VISIBLE
+    - {
+        "eye-left-white",
+        "eye-left-iris",
+        "eye-right-white",
+        "eye-right-iris",
+    }
+    | {"eye-left-upper-lid", "eye-right-upper-lid"}
+)
+
+MOUTH_LAYERS = {
+    "mouth-neutral",
+    "mouth-smile",
+    "mouth-talk",
+    "mouth-worried",
 }
 
 CHARACTER_VISIBLE = NEUTRAL_VISIBLE - {"sonar", "bubbles"}
@@ -191,6 +211,13 @@ def dilate(mask: np.ndarray, pixels: int) -> np.ndarray:
     return cv2.dilate(mask.astype(np.uint8), kernel, iterations=1).astype(bool)
 
 
+def erode(mask: np.ndarray, pixels: int) -> np.ndarray:
+    """向内收缩蒙版，用于忽略抗锯齿边缘。"""
+    size = pixels * 2 + 1
+    kernel = np.ones((size, size), dtype=np.uint8)
+    return cv2.erode(mask.astype(np.uint8), kernel, iterations=1).astype(bool)
+
+
 def clean_components(mask: np.ndarray, minimum_area: int = 8) -> np.ndarray:
     """移除不属于语义材料的微小噪点。"""
     count, labels, stats, _ = cv2.connectedComponentsWithStats(
@@ -249,6 +276,54 @@ def shift_layer(image: Image.Image, dx: int, dy: int) -> Image.Image:
     return shifted
 
 
+def remap_rgba_premultiplied(
+    image: Image.Image,
+    map_x: np.ndarray,
+    map_y: np.ndarray,
+) -> Image.Image:
+    """在预乘 alpha 空间形变，消除透明边缘的黑白锯齿。"""
+    data = np.asarray(image.convert("RGBA"), dtype=np.float32)
+    alpha = data[:, :, 3:4] / 255.0
+    premultiplied = np.dstack((data[:, :, :3] * alpha, data[:, :, 3]))
+    warped = cv2.remap(
+        premultiplied,
+        map_x.astype(np.float32),
+        map_y.astype(np.float32),
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(0, 0, 0, 0),
+    )
+    warped_alpha = np.clip(warped[:, :, 3:4], 0, 255)
+    warped_rgb = np.clip(
+        warped[:, :, :3] / np.maximum(warped_alpha / 255.0, 1e-6),
+        0,
+        255,
+    )
+    output = np.dstack((warped_rgb, warped_alpha)).astype(np.uint8)
+    output[output[:, :, 3] == 0, :3] = 0
+    return Image.fromarray(output, mode="RGBA")
+
+
+def sway_hair_layer(image: Image.Image, name: str) -> Image.Image:
+    """锁住发根，仅让离根较远的发梢平滑摆动。"""
+    dx, dy = HAIR_QA_OFFSETS[name]
+    yy, xx = np.mgrid[0:HEIGHT, 0:WIDTH]
+    if name == "front-hair":
+        progress = np.clip((yy.astype(np.float32) - 188.0) / 150.0, 0.0, 1.0)
+    else:
+        root_x, root_y, inner, span = {
+            "back-hair": (500.0, 236.0, 105.0, 300.0),
+            "side-hair-left": (414.0, 256.0, 34.0, 165.0),
+            "side-hair-right": (585.0, 250.0, 36.0, 170.0),
+        }[name]
+        distance = np.hypot(xx.astype(np.float32) - root_x, yy.astype(np.float32) - root_y)
+        progress = np.clip((distance - inner) / span, 0.0, 1.0)
+    eased = progress * progress * (3.0 - 2.0 * progress)
+    map_x = xx.astype(np.float32) - eased * float(dx)
+    map_y = yy.astype(np.float32) - eased * float(dy)
+    return remap_rgba_premultiplied(image, map_x, map_y)
+
+
 def bend_tail(image: Image.Image, maximum_dx: float = 8.0) -> Image.Image:
     """让尾根保持连接，位移沿尾身平滑增加。"""
     data = np.asarray(image)
@@ -277,21 +352,21 @@ def make_feature_masks() -> dict[str, np.ndarray]:
     """返回经 200% 参考图校准的脸部区域。"""
     eye_left = draw_mask(
         polygons=(
-            ((436, 289), (443, 276), (459, 269), (475, 275), (485, 290),
-             (481, 309), (471, 322), (454, 323), (442, 311)),
+            ((423, 295), (435, 279), (456, 267), (477, 273), (491, 290),
+             (486, 313), (469, 329), (446, 326), (430, 313)),
         )
     )
     eye_right = draw_mask(
         polygons=(
-            ((509, 284), (517, 270), (535, 263), (551, 269), (561, 284),
-             (557, 305), (548, 318), (530, 320), (516, 308)),
+            ((502, 288), (514, 270), (535, 261), (555, 267), (571, 283),
+             (566, 306), (550, 322), (528, 323), (511, 309)),
         )
     )
     return {
         "eye-left": eye_left,
         "eye-right": eye_right,
-        "iris-left": draw_mask(ellipses=((445, 273, 483, 325),)),
-        "iris-right": draw_mask(ellipses=((521, 267, 559, 320),)),
+        "iris-left": draw_mask(ellipses=((445, 276, 484, 327),)),
+        "iris-right": draw_mask(ellipses=((520, 269, 560, 323),)),
         "brow-left": draw_mask(
             polygons=(
                 ((439, 260), (451, 253), (468, 252), (487, 258),
@@ -304,7 +379,13 @@ def make_feature_masks() -> dict[str, np.ndarray]:
                  (557, 261), (541, 256), (525, 256), (513, 262)),
             )
         ),
-        "mouth": draw_mask(ellipses=((468, 336, 532, 387),)),
+        "mouth": draw_mask(
+            polygons=(
+                ((471, 338), (483, 333), (518, 333), (530, 340),
+                 (531, 355), (523, 373), (511, 378), (488, 377),
+                 (476, 368), (469, 350)),
+            )
+        ),
     }
 
 
@@ -502,88 +583,159 @@ def make_semantic_masks(
 
 def make_eye_layers(
     rgb: np.ndarray,
+    blink_rgb: np.ndarray,
     masks: dict[str, np.ndarray],
     side: str,
 ) -> dict[str, Image.Image]:
-    """创建眼白、虹膜与原始上眼睑三层。"""
+    """创建可独立注视的睁眼层与可交付的自然闭眼层。"""
     eye = masks[f"eye-{side}"]
     iris = masks[f"iris-{side}"] & eye
-    mean = rgb.mean(axis=2)
-    red = rgb[:, :, 0].astype(np.int16)
-    blue = rgb[:, :, 2].astype(np.int16)
     yy = np.arange(HEIGHT)[:, None]
-    top = 302 if side == "left" else 298
-    lid = eye & (yy <= top) & ((mean < 168) | (red - blue > 22))
-    lid = cv2.dilate(
-        lid.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1
-    ).astype(bool) & dilate(eye, 2)
-    lid = clean_components(lid, minimum_area=3)
+    iris &= yy >= (279 if side == "left" else 273)
+    iris = erode(iris, 1)
 
-    white_rgb = rgb.copy()
-    y_grid = np.arange(HEIGHT)[:, None]
-    tint = np.clip(252 - np.maximum(y_grid - 280, 0) * 0.08, 244, 252).astype(np.uint8)
-    tint_full = tint.repeat(WIDTH, axis=1)
-    white_rgb[:, :, 0][eye] = tint_full[eye]
-    white_rgb[:, :, 1][eye] = np.maximum(
-        tint_full[eye].astype(np.int16) - 3, 0
-    ).astype(np.uint8)
-    white_rgb[:, :, 2][eye] = 255
+    # 眼白层保留原画眼线和眼窝，只修掉虹膜；移动虹膜后不会留下原位 ghost。
+    white_rgb = inpaint(rgb, dilate(iris, 1), radius=6)
+
+    lid_region = draw_mask(
+        ellipses=(
+            (419, 280, 497, 333)
+            if side == "left"
+            else (497, 273, 578, 328),
+        )
+    )
+    reference_skin = lid_region & (blink_rgb.mean(axis=2) > 150)
+    source_skin = lid_region & (rgb.mean(axis=2) > 150)
+    calibration = reference_skin & source_skin & ~erode(eye, 2)
+    matched_blink = blink_rgb.astype(np.int16)
+    if np.any(calibration):
+        delta = np.median(
+            rgb[calibration].astype(np.int16)
+            - blink_rgb[calibration].astype(np.int16),
+            axis=0,
+        )
+        delta = np.clip(delta, -18, 18)
+        matched_blink = matched_blink + delta.reshape(1, 1, 3)
+    matched_blink = np.clip(matched_blink, 0, 255).astype(np.uint8)
 
     return {
-        f"eye-{side}-white": rgba(white_rgb, mask_alpha(eye, sigma=0.45)),
+        f"eye-{side}-white": rgba(white_rgb, mask_alpha(eye, sigma=0.7)),
         f"eye-{side}-iris": rgba(rgb, mask_alpha(iris, sigma=0.35)),
-        f"eye-{side}-upper-lid": rgba(rgb, mask_alpha(lid, sigma=0.3)),
+        f"eye-{side}-upper-lid": rgba(
+            matched_blink,
+            mask_alpha(lid_region, sigma=1.8),
+        ),
     }
 
 
-def draw_face_variant(draw_action) -> Image.Image:
-    """绘制具有真实 alpha 的互斥表情层。"""
-    image = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    draw_action(draw)
-    return image
+def resize_rgba_premultiplied(
+    image: Image.Image,
+    size: tuple[int, int],
+) -> Image.Image:
+    """以预乘 alpha 缩放语义部件，避免透明边缘出现黑线。"""
+    data = np.asarray(image.convert("RGBA"), dtype=np.float32)
+    alpha = data[:, :, 3:4] / 255.0
+    premultiplied = np.dstack((data[:, :, :3] * alpha, data[:, :, 3]))
+    resized = cv2.resize(premultiplied, size, interpolation=cv2.INTER_LANCZOS4)
+    resized_alpha = np.clip(resized[:, :, 3:4], 0, 255)
+    divisor = np.maximum(resized_alpha / 255.0, 1e-6)
+    resized_rgb = np.clip(resized[:, :, :3] / divisor, 0, 255)
+    output = np.dstack((resized_rgb, resized_alpha)).astype(np.uint8)
+    output[output[:, :, 3] == 0, :3] = 0
+    return Image.fromarray(output, mode="RGBA")
+
+
+def bend_rgba(image: Image.Image, center_offset: float) -> Image.Image:
+    """用连续位移场弯曲嘴型，保留原画像素纹理。"""
+    data = np.asarray(image.convert("RGBA"), dtype=np.float32)
+    height, width = data.shape[:2]
+    yy, xx = np.mgrid[0:height, 0:width]
+    normalized_x = (xx.astype(np.float32) - (width - 1) / 2) / max(width / 2, 1)
+    displacement = center_offset * (1.0 - np.clip(normalized_x**2, 0.0, 1.0))
+    alpha = data[:, :, 3:4] / 255.0
+    premultiplied = np.dstack((data[:, :, :3] * alpha, data[:, :, 3]))
+    warped = cv2.remap(
+        premultiplied,
+        xx.astype(np.float32),
+        yy.astype(np.float32) - displacement,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(0, 0, 0, 0),
+    )
+    warped_alpha = np.clip(warped[:, :, 3:4], 0, 255)
+    warped_rgb = np.clip(
+        warped[:, :, :3] / np.maximum(warped_alpha / 255.0, 1e-6),
+        0,
+        255,
+    )
+    output = np.dstack((warped_rgb, warped_alpha)).astype(np.uint8)
+    output[output[:, :, 3] == 0, :3] = 0
+    return Image.fromarray(output, mode="RGBA")
+
+
+def place_face_part(image: Image.Image, box: tuple[int, int, int, int]) -> Image.Image:
+    """把局部语义部件缩放并放回原始全画布坐标。"""
+    target = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    resized = resize_rgba_premultiplied(image, (box[2] - box[0], box[3] - box[1]))
+    target.alpha_composite(resized, (box[0], box[1]))
+    return target
+
+
+def mouth_source_layer(rgb: np.ndarray, masks: dict[str, np.ndarray]) -> Image.Image:
+    """从批准原画提取完整嘴腔轮廓，不夹带下巴和领口。"""
+    signal = masks["mouth-signal"] & masks["mouth"]
+    signal &= np.arange(HEIGHT)[:, None] <= 376
+    signal = cv2.morphologyEx(
+        signal.astype(np.uint8),
+        cv2.MORPH_CLOSE,
+        np.ones((5, 5), np.uint8),
+        iterations=1,
+    )
+    contours, _ = cv2.findContours(signal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filled = np.zeros((HEIGHT, WIDTH), dtype=np.uint8)
+    for contour in contours:
+        if cv2.contourArea(contour) >= 16:
+            cv2.drawContours(filled, [contour], -1, 255, thickness=cv2.FILLED)
+    mouth_alpha = mask_alpha(filled > 0, sigma=0.45)
+    return rgba(rgb, mouth_alpha)
 
 
 def make_face_layers(
     rgb: np.ndarray,
+    blink_rgb: np.ndarray,
     masks: dict[str, np.ndarray],
 ) -> dict[str, Image.Image]:
-    """创建双眉与四种互斥嘴型。"""
+    """创建双眼、双眉与四种源纹理互斥嘴型。"""
     layers: dict[str, Image.Image] = {}
-    layers.update(make_eye_layers(rgb, masks, "left"))
-    layers.update(make_eye_layers(rgb, masks, "right"))
+    layers.update(make_eye_layers(rgb, blink_rgb, masks, "left"))
+    layers.update(make_eye_layers(rgb, blink_rgb, masks, "right"))
 
-    layers["brow-left"] = draw_face_variant(
-        lambda draw: draw.arc(
-            (440, 255, 486, 273), 200, 338, fill=(112, 65, 91, 218), width=2
-        )
-    )
-    layers["brow-right"] = draw_face_variant(
-        lambda draw: draw.arc(
-            (511, 253, 557, 271), 202, 340, fill=(112, 65, 91, 218), width=2
-        )
-    )
-
-    layers["mouth-neutral"] = rgba(
+    layers["brow-left"] = rgba(
         rgb,
-        mask_alpha(masks["mouth-signal"], sigma=0.35),
+        mask_alpha(masks["brow-left"], sigma=0.45),
     )
-    layers["mouth-smile"] = draw_face_variant(
-        lambda draw: (
-            draw.arc((468, 340, 531, 381), 8, 172, fill=(112, 50, 65, 255), width=4),
-            draw.arc((477, 347, 523, 377), 8, 172, fill=(239, 122, 126, 238), width=7),
-        )
+    layers["brow-right"] = rgba(
+        rgb,
+        mask_alpha(masks["brow-right"], sigma=0.45),
     )
-    layers["mouth-talk"] = draw_face_variant(
-        lambda draw: (
-            draw.ellipse((477, 339, 523, 388), fill=(104, 43, 60, 255), outline=(87, 39, 55, 255), width=3),
-            draw.ellipse((485, 364, 515, 383), fill=(239, 122, 128, 244)),
-        )
+
+    neutral = mouth_source_layer(rgb, masks)
+    neutral_box = neutral.getchannel("A").getbbox()
+    if neutral_box is None:
+        raise RuntimeError("批准原画未提取到嘴部素材")
+    local = neutral.crop(neutral_box)
+    layers["mouth-neutral"] = neutral
+    layers["mouth-smile"] = place_face_part(
+        bend_rgba(local, center_offset=2.0),
+        (469, 341, 532, 373),
     )
-    layers["mouth-worried"] = draw_face_variant(
-        lambda draw: draw.arc(
-            (469, 354, 530, 387), 193, 347, fill=(112, 55, 70, 255), width=4
-        )
+    layers["mouth-talk"] = place_face_part(
+        bend_rgba(local, center_offset=0.5),
+        (481, 337, 520, 376),
+    )
+    layers["mouth-worried"] = place_face_part(
+        bend_rgba(local, center_offset=-3.5),
+        (473, 343, 529, 373),
     )
     return layers
 
@@ -597,13 +749,23 @@ def make_head_base(
     head_visible = masks["head-owner"]
     head_underfill = dilate(head_visible, 7) & masks["head-zone"]
     feature_union = (
-        masks["eye-left"]
-        | masks["eye-right"]
+        dilate(masks["eye-left"], 2)
+        | dilate(masks["eye-right"], 2)
         | masks["brow-left"]
         | masks["brow-right"]
-        | dilate(masks["mouth-signal"], 2)
+        | dilate(masks["mouth"], 1)
     )
-    repaired = inpaint(rgb, dilate(feature_union, 1), radius=9)
+    repaired = inpaint(rgb, feature_union, radius=7)
+    smooth = cv2.GaussianBlur(repaired, (0, 0), 3.2)
+    blend = cv2.GaussianBlur(
+        erode(feature_union, 1).astype(np.float32),
+        (0, 0),
+        1.2,
+    )[:, :, None]
+    repaired = np.rint(
+        repaired.astype(np.float32) * (1.0 - blend)
+        + smooth.astype(np.float32) * blend
+    ).astype(np.uint8)
     hair_replacement = head_underfill & masks["hair"]
     repaired = inpaint(repaired, hair_replacement, radius=8)
 
@@ -667,6 +829,7 @@ def build_layers(
     original_rgb: np.ndarray,
     subject_rgb: np.ndarray,
     subject_alpha: np.ndarray,
+    blink_reference_rgb: np.ndarray,
 ) -> tuple[dict[str, Image.Image], dict[str, np.ndarray]]:
     """构建 23 张真实语义图层与 seam 验证区域。"""
     masks = make_semantic_masks(subject_rgb, subject_alpha)
@@ -699,7 +862,7 @@ def build_layers(
     layers["torso"] = rgba(torso_repair, torso_alpha)
 
     layers["head-base"] = make_head_base(subject_rgb, subject_alpha, masks)
-    layers.update(make_face_layers(subject_rgb, masks))
+    layers.update(make_face_layers(subject_rgb, blink_reference_rgb, masks))
 
     hand_alpha = mask_alpha(masks["hand"], subject_alpha, sigma=0.35)
     layers["hand-front"] = rgba(subject_rgb, hand_alpha)
@@ -772,17 +935,6 @@ def on_checker(character: Image.Image) -> Image.Image:
     return Image.alpha_composite(checkerboard(), character)
 
 
-def make_blink_overlay() -> Image.Image:
-    """生成闭眼时的两条真实上眼睑。"""
-    canvas = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-    draw.arc((432, 282, 488, 321), 190, 350, fill=(79, 44, 72, 255), width=4)
-    draw.arc((506, 279, 563, 318), 190, 350, fill=(79, 44, 72, 255), width=4)
-    draw.arc((433, 286, 487, 322), 194, 346, fill=(179, 91, 112, 210), width=2)
-    draw.arc((507, 282, 562, 319), 194, 346, fill=(179, 91, 112, 210), width=2)
-    return canvas
-
-
 def masked_shift(
     image: Image.Image,
     dx: int,
@@ -809,19 +961,7 @@ def make_qa_scenarios(
     character_scenarios["neutral"] = neutral
     display_scenarios["neutral"] = on_checker(neutral)
 
-    blink_visible = NEUTRAL_VISIBLE - {
-        "eye-left-white",
-        "eye-left-iris",
-        "eye-left-upper-lid",
-        "eye-right-white",
-        "eye-right-iris",
-        "eye-right-upper-lid",
-    }
-    blink = transparent_composite(
-        layers,
-        visible=blink_visible,
-        extras=(make_blink_overlay(),),
-    )
+    blink = transparent_composite(layers, visible=BLINK_VISIBLE)
     character_scenarios["blink"] = blink
     display_scenarios["blink"] = on_checker(blink)
 
@@ -855,7 +995,7 @@ def make_qa_scenarios(
 
     hair_names = ("back-hair", "front-hair", "side-hair-left", "side-hair-right")
     hair_transforms = {
-        name: shift_layer(layers[name], *HAIR_QA_OFFSETS[name])
+        name: sway_hair_layer(layers[name], name)
         for name in hair_names
     }
     hair = transparent_composite(
@@ -941,20 +1081,101 @@ def original_position_ghost_metrics(
     }
 
 
+def significant_component_count(mask: np.ndarray, minimum_area: int = 24) -> int:
+    """统计足以构成视觉部件的连通域数量。"""
+    count, _, stats, _ = cv2.connectedComponentsWithStats(
+        mask.astype(np.uint8),
+        connectivity=8,
+    )
+    return sum(
+        int(stats[label, cv2.CC_STAT_AREA]) >= minimum_area
+        for label in range(1, count)
+    )
+
+
+def largest_component_pixels(mask: np.ndarray, minimum_area: int = 3) -> int:
+    """返回视觉异常蒙版中最大连通域面积。"""
+    count, _, stats, _ = cv2.connectedComponentsWithStats(
+        mask.astype(np.uint8),
+        connectivity=8,
+    )
+    areas = [
+        int(stats[label, cv2.CC_STAT_AREA])
+        for label in range(1, count)
+        if int(stats[label, cv2.CC_STAT_AREA]) >= minimum_area
+    ]
+    return max(areas, default=0)
+
+
+def visual_proxy_metrics(
+    reference: Image.Image,
+    candidate: Image.Image,
+    region: np.ndarray | None = None,
+) -> dict[str, int]:
+    """从实际 RGBA 合成检测内部透明洞、暗缝和新增断片。"""
+    reference_data = np.asarray(reference.convert("RGBA"), dtype=np.int16)
+    candidate_data = np.asarray(candidate.convert("RGBA"), dtype=np.int16)
+    if reference_data.shape != candidate_data.shape:
+        raise ValueError("视觉代理指标要求同尺寸 RGBA 合成图")
+
+    reference_present = reference_data[:, :, 3] > 64
+    candidate_present = candidate_data[:, :, 3] > 64
+    reference_interior = erode(reference_present, 2)
+    inspection = np.ones_like(reference_present, dtype=bool)
+    if region is not None:
+        if region.shape != reference_present.shape:
+            raise ValueError("视觉代理区域尺寸不匹配")
+        inspection &= region
+
+    new_holes = reference_interior & inspection & ~candidate_present
+    reference_luma = (
+        reference_data[:, :, 0] * 54
+        + reference_data[:, :, 1] * 183
+        + reference_data[:, :, 2] * 19
+    ) // 256
+    candidate_luma = (
+        candidate_data[:, :, 0] * 54
+        + candidate_data[:, :, 1] * 183
+        + candidate_data[:, :, 2] * 19
+    ) // 256
+    new_dark = (
+        reference_interior
+        & inspection
+        & candidate_present
+        & (reference_luma - candidate_luma >= 38)
+        & (candidate_luma <= 118)
+    )
+    disconnected = max(
+        significant_component_count(candidate_present)
+        - significant_component_count(reference_present),
+        0,
+    )
+    return {
+        "newInteriorHolePixels": int(np.count_nonzero(new_holes)),
+        "largestNewHoleComponentPixels": largest_component_pixels(new_holes),
+        "largestNewDarkComponentPixels": largest_component_pixels(new_dark),
+        "newDisconnectedComponents": int(disconnected),
+    }
+
+
 def seam_metrics(
     scenarios: dict[str, Image.Image],
     layers: dict[str, Image.Image],
     seam_masks: dict[str, np.ndarray],
 ) -> dict[str, dict[str, int]]:
-    """量化关键接缝内的新透明洞与连接状态。"""
+    """以中性实际合成为基准量化五类动作的视觉异常。"""
     metrics: dict[str, dict[str, int]] = {}
+    neutral = scenarios["neutral"]
     for scenario in ("blink", "gaze", "hair", "hand", "tail"):
-        alpha = alpha_array(scenarios[scenario])
-        seam = seam_masks[scenario]
-        holes = int(np.count_nonzero(seam & (alpha == 0)))
+        proxy = visual_proxy_metrics(
+            neutral,
+            scenarios[scenario],
+            seam_masks[scenario],
+        )
         metrics[scenario] = {
-            "transparentHolePixels": holes,
-            "disconnectedRequiredParts": 0,
+            **proxy,
+            "transparentHolePixels": proxy["newInteriorHolePixels"],
+            "disconnectedRequiredParts": proxy["newDisconnectedComponents"],
             "anchorOverlapPixels": 0,
         }
 
@@ -962,12 +1183,13 @@ def seam_metrics(
     for name in ("back-hair", "front-hair", "side-hair-left", "side-hair-right"):
         hair_alpha = np.maximum(
             hair_alpha,
-            alpha_array(shift_layer(layers[name], *HAIR_QA_OFFSETS[name])),
+            alpha_array(sway_hair_layer(layers[name], name)),
         )
     hair_anchor = alpha_array(layers["head-base"]) > 16
     metrics["hair"]["anchorOverlapPixels"] = component_overlap(hair_alpha, hair_anchor)
-    metrics["hair"]["disconnectedRequiredParts"] = int(
-        metrics["hair"]["anchorOverlapPixels"] == 0
+    metrics["hair"]["disconnectedRequiredParts"] = max(
+        metrics["hair"]["disconnectedRequiredParts"],
+        int(metrics["hair"]["anchorOverlapPixels"] == 0),
     )
     original_hair = transparent_composite(
         layers,
@@ -977,7 +1199,7 @@ def seam_metrics(
     for name in ("back-hair", "front-hair", "side-hair-left", "side-hair-right"):
         shifted_hair = Image.alpha_composite(
             shifted_hair,
-            shift_layer(layers[name], *HAIR_QA_OFFSETS[name]),
+            sway_hair_layer(layers[name], name),
         )
     stationary_hair = transparent_composite(
         layers,
@@ -994,8 +1216,9 @@ def seam_metrics(
         | (alpha_array(layers["core"]) > 16)
     )
     metrics["hand"]["anchorOverlapPixels"] = component_overlap(hand_alpha, hand_anchor)
-    metrics["hand"]["disconnectedRequiredParts"] = int(
-        metrics["hand"]["anchorOverlapPixels"] == 0
+    metrics["hand"]["disconnectedRequiredParts"] = max(
+        metrics["hand"]["disconnectedRequiredParts"],
+        int(metrics["hand"]["anchorOverlapPixels"] == 0),
     )
     stationary_hand = transparent_composite(
         layers,
@@ -1013,8 +1236,9 @@ def seam_metrics(
     tail_alpha = alpha_array(moved_tail)
     tail_anchor = alpha_array(layers["torso"]) > 16
     metrics["tail"]["anchorOverlapPixels"] = component_overlap(tail_alpha, tail_anchor)
-    metrics["tail"]["disconnectedRequiredParts"] = int(
-        metrics["tail"]["anchorOverlapPixels"] == 0
+    metrics["tail"]["disconnectedRequiredParts"] = max(
+        metrics["tail"]["disconnectedRequiredParts"],
+        int(metrics["tail"]["anchorOverlapPixels"] == 0),
     )
     stationary_tail = transparent_composite(
         layers,
@@ -1055,64 +1279,223 @@ def preview_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def save_movable_preview(display_scenarios: dict[str, Image.Image]) -> None:
-    """把六类动作拼成一张用户友好的首版可动层预览。"""
-    canvas = Image.new("RGB", (1920, 1080), (10, 20, 39))
-    draw = ImageDraw.Draw(canvas)
-    title_font = preview_font(44)
-    subtitle_font = preview_font(22)
-    label_font = preview_font(24)
-    draw.text(
-        (54, 34),
-        "DEEPSEEK V2 / FIRST MOVABLE-LAYER PREVIEW",
-        fill=(229, 247, 255),
-        font=title_font,
+def ocean_background(size: tuple[int, int]) -> Image.Image:
+    """创建低干扰深海渐变底，便于用户看清角色而非棋盘。"""
+    width, height = size
+    yy, xx = np.mgrid[0:height, 0:width]
+    progress = yy.astype(np.float32) / max(height - 1, 1)
+    top = np.array((23, 68, 104), dtype=np.float32)
+    bottom = np.array((5, 16, 38), dtype=np.float32)
+    rgb = top[None, None, :] * (1.0 - progress[:, :, None])
+    rgb += bottom[None, None, :] * progress[:, :, None]
+    glow = np.exp(
+        -(
+            ((xx - width * 0.48) / max(width * 0.55, 1)) ** 2
+            + ((yy - height * 0.25) / max(height * 0.42, 1)) ** 2
+        )
+        * 2.0
     )
-    draw.text(
-        (56, 91),
-        "23 semantic RGBA layers  |  blink, gaze, hair, hand and tail checks",
-        fill=(116, 210, 242),
-        font=subtitle_font,
+    rgb += glow[:, :, None] * np.array((8, 25, 35), dtype=np.float32)
+    canvas = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode="RGB")
+    draw = ImageDraw.Draw(canvas, "RGBA")
+    for x, y, radius, opacity in (
+        (66, 126, 8, 62),
+        (162, 74, 4, 54),
+        (width - 92, 156, 10, 48),
+        (width - 165, height - 92, 5, 42),
+    ):
+        draw.ellipse(
+            (x - radius, y - radius, x + radius, y + radius),
+            outline=(124, 221, 248, opacity),
+            width=max(1, radius // 3),
+        )
+    return canvas
+
+
+def character_on_ocean(character: Image.Image) -> Image.Image:
+    """把透明角色叠到中性深海底。"""
+    base = ocean_background(character.size).convert("RGBA")
+    return Image.alpha_composite(base, character.convert("RGBA")).convert("RGB")
+
+
+def focused_panel(
+    character: Image.Image,
+    crop: tuple[int, int, int, int],
+    size: tuple[int, int],
+) -> Image.Image:
+    """输出不拉伸的动作局部，确保面部和 seam 足够大。"""
+    focused = character_on_ocean(character).crop(crop)
+    return ImageOps.fit(
+        focused,
+        size,
+        method=Image.Resampling.LANCZOS,
+        centering=(0.5, 0.5),
     )
 
-    cards = (
-        ("NEUTRAL BASE", "neutral"),
-        ("BLINK", "blink"),
-        ("GAZE EXTREMES", "gaze-extremes"),
-        ("HAIR SWAY  2-6 px", "hair-offset"),
-        ("HAND OFFSET  +4 / -3", "hand-offset"),
-        ("TAIL SWAY  8 px / ROOT LOCKED", "tail-offset"),
+
+def mouth_characters(layers: dict[str, Image.Image]) -> dict[str, Image.Image]:
+    """以同一脸底合成四个互斥嘴型。"""
+    base_visible = NEUTRAL_VISIBLE - MOUTH_LAYERS
+    return {
+        name.removeprefix("mouth-"): transparent_composite(
+            layers,
+            visible=base_visible | {name},
+        )
+        for name in sorted(MOUTH_LAYERS, key=lambda item: Z_INDEX[item])
+    }
+
+
+def save_mouth_expressions(layers: dict[str, Image.Image]) -> None:
+    """保存四嘴型等比例大特写，供 focused QA。"""
+    canvas = ocean_background((2048, 1024))
+    draw = ImageDraw.Draw(canvas)
+    title_font = preview_font(38)
+    label_font = preview_font(26)
+    draw.text(
+        (48, 26),
+        "FOUR DELIVERED MOUTH LAYERS / SAME HEAD BASE",
+        fill=(230, 248, 255),
+        font=title_font,
     )
-    card_width, card_height = 590, 420
-    for index, (label, scenario) in enumerate(cards):
-        column = index % 3
-        row = index // 3
-        left = 50 + column * 615
-        top = 150 + row * 445
-        right = left + card_width
-        bottom = top + card_height
+    variants = mouth_characters(layers)
+    for index, name in enumerate(("neutral", "smile", "talk", "worried")):
+        left = 32 + index * 504
+        top = 96
+        right = left + 480
+        bottom = 990
         draw.rounded_rectangle(
             (left, top, right, bottom),
-            radius=20,
-            fill=(19, 34, 58),
-            outline=(45, 139, 187),
+            radius=24,
+            fill=(10, 28, 51, 230),
+            outline=(65, 162, 202, 220),
             width=2,
         )
         draw.text(
-            (left + 22, top + 16),
-            label,
-            fill=(223, 245, 255),
+            (left + 20, top + 16),
+            name.upper(),
+            fill=(222, 245, 255),
             font=label_font,
         )
-        preview = ImageOps.contain(
-            display_scenarios[scenario].convert("RGB"),
-            (card_width - 36, card_height - 72),
-            method=Image.Resampling.LANCZOS,
+        panel = focused_panel(
+            variants[name],
+            (350, 160, 650, 440),
+            (440, 770),
         )
-        paste_x = left + (card_width - preview.width) // 2
-        paste_y = top + 62 + (card_height - 72 - preview.height) // 2
-        canvas.paste(preview, (paste_x, paste_y))
+        canvas.paste(panel, (left + 20, top + 72))
+    canvas.save(EVIDENCE_DIR / "mouth-expressions.png", optimize=True)
 
+
+def save_movable_preview(
+    layers: dict[str, Image.Image],
+    scenarios: dict[str, Image.Image],
+) -> None:
+    """输出含前后对照、脸部大特写和三类动作局部的用户预览。"""
+    canvas = ocean_background((2400, 1800))
+    draw = ImageDraw.Draw(canvas)
+    title_font = preview_font(48)
+    subtitle_font = preview_font(24)
+    label_font = preview_font(24)
+    small_font = preview_font(18)
+    draw.text(
+        (54, 34),
+        "DEEPSEEK V2 / FIRST MOVABLE-LAYER PREVIEW",
+        fill=(232, 249, 255),
+        font=title_font,
+    )
+    draw.text(
+        (56, 98),
+        "23 real RGBA layers  |  delivered-layer before/after comparisons",
+        fill=(127, 219, 247),
+        font=subtitle_font,
+    )
+
+    right_transforms = {
+        "eye-left-iris": masked_shift(
+            layers["eye-left-iris"],
+            5,
+            0,
+            alpha_array(layers["eye-left-white"]),
+        ),
+        "eye-right-iris": masked_shift(
+            layers["eye-right-iris"],
+            5,
+            0,
+            alpha_array(layers["eye-right-white"]),
+        ),
+    }
+    gaze_right = transparent_composite(
+        layers,
+        visible=NEUTRAL_VISIBLE,
+        transforms=right_transforms,
+    )
+    face_cards = (
+        ("OPEN", scenarios["neutral"]),
+        ("BLINK", scenarios["blink"]),
+        ("GAZE LEFT", scenarios["gaze"]),
+        ("GAZE RIGHT", gaze_right),
+    )
+    for index, (label, character) in enumerate(face_cards):
+        left = 48 + index * 588
+        top = 154
+        draw.rounded_rectangle(
+            (left, top, left + 552, top + 466),
+            radius=22,
+            fill=(8, 27, 51, 235),
+            outline=(61, 157, 201, 220),
+            width=2,
+        )
+        draw.text((left + 18, top + 14), label, fill=(226, 246, 255), font=label_font)
+        panel = focused_panel(character, (330, 150, 680, 455), (516, 388))
+        canvas.paste(panel, (left + 18, top + 62))
+
+    mouths = mouth_characters(layers)
+    for index, name in enumerate(("neutral", "smile", "talk", "worried")):
+        left = 48 + index * 588
+        top = 650
+        draw.rounded_rectangle(
+            (left, top, left + 552, top + 334),
+            radius=22,
+            fill=(8, 27, 51, 235),
+            outline=(61, 157, 201, 220),
+            width=2,
+        )
+        draw.text(
+            (left + 18, top + 12),
+            f"MOUTH / {name.upper()}",
+            fill=(226, 246, 255),
+            font=label_font,
+        )
+        panel = focused_panel(mouths[name], (390, 255, 610, 410), (516, 260))
+        canvas.paste(panel, (left + 18, top + 58))
+
+    action_cards = (
+        ("HAIR SWAY / ROOT LOCK", scenarios["hair"], (180, 50, 850, 760)),
+        ("HAND OFFSET / +4,-3", scenarios["hand"], (170, 310, 640, 780)),
+        ("TAIL SWAY / ROOT LOCK", scenarios["tail"], (430, 500, 960, 1450)),
+    )
+    for index, (label, moved, crop) in enumerate(action_cards):
+        left = 48 + index * 784
+        top = 1020
+        card_width = 748
+        draw.rounded_rectangle(
+            (left, top, left + card_width, top + 710),
+            radius=24,
+            fill=(7, 24, 47, 235),
+            outline=(61, 157, 201, 220),
+            width=2,
+        )
+        draw.text((left + 18, top + 14), label, fill=(226, 246, 255), font=label_font)
+        draw.text((left + 58, top + 58), "BEFORE", fill=(125, 216, 245), font=small_font)
+        draw.text((left + 424, top + 58), "AFTER", fill=(125, 216, 245), font=small_font)
+        before = focused_panel(scenarios["neutral"], crop, (340, 610))
+        after = focused_panel(moved, crop, (340, 610))
+        canvas.paste(before, (left + 18, top + 88))
+        canvas.paste(after, (left + 390, top + 88))
+        draw.line(
+            (left + 366, top + 386, left + 382, top + 386),
+            fill=(124, 222, 248),
+            width=3,
+        )
     canvas.save(EVIDENCE_DIR / "movable-layer-preview.png", optimize=True)
 
 
@@ -1165,19 +1548,30 @@ def save_stats(
     )
 
 
-def validate_inputs() -> tuple[Image.Image, Image.Image]:
+def validate_inputs() -> tuple[Image.Image, Image.Image, Image.Image]:
     """验证批准输入未被替换或缩放。"""
     if sha256(ORIGINAL_PATH) != EXPECTED_ORIGINAL_SHA256:
         raise RuntimeError("原始 PNG SHA-256 不匹配")
     if sha256(SUBJECT_PATH) != EXPECTED_SUBJECT_SHA256:
         raise RuntimeError("批准主体 matte SHA-256 不匹配")
+    if sha256(BLINK_REFERENCE_PATH) != EXPECTED_BLINK_REFERENCE_SHA256:
+        raise RuntimeError("闭眼参考图 SHA-256 不匹配")
     original = Image.open(ORIGINAL_PATH)
     subject = Image.open(SUBJECT_PATH)
-    if original.size != (WIDTH, HEIGHT) or subject.size != (WIDTH, HEIGHT):
+    blink_reference = Image.open(BLINK_REFERENCE_PATH)
+    if (
+        original.size != (WIDTH, HEIGHT)
+        or subject.size != (WIDTH, HEIGHT)
+        or blink_reference.size != (WIDTH, HEIGHT)
+    ):
         raise RuntimeError("输入画布必须为 1024x1536")
-    if original.mode != "RGB" or subject.mode != "RGBA":
-        raise RuntimeError(f"输入模式错误: original={original.mode} subject={subject.mode}")
-    return original, subject
+    if original.mode != "RGB" or subject.mode != "RGBA" or blink_reference.mode != "RGB":
+        raise RuntimeError(
+            "输入模式错误: "
+            f"original={original.mode} subject={subject.mode} "
+            f"blink={blink_reference.mode}"
+        )
+    return original, subject, blink_reference
 
 
 def main() -> None:
@@ -1189,12 +1583,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    original, subject = validate_inputs()
+    original, subject, blink_reference = validate_inputs()
     original_rgb = np.asarray(original)
     subject_array = np.asarray(subject)
     subject_rgb = subject_array[:, :, :3]
     subject_alpha = subject_array[:, :, 3]
-    layers, seam_masks = build_layers(original_rgb, subject_rgb, subject_alpha)
+    layers, seam_masks = build_layers(
+        original_rgb,
+        subject_rgb,
+        subject_alpha,
+        np.asarray(blink_reference),
+    )
     save_layers(layers)
     if args.stage == "layers":
         print("ASSET_BUILD=PASS STAGE=layers LAYERS=23")
@@ -1202,7 +1601,8 @@ def main() -> None:
 
     scenarios, displays = make_qa_scenarios(layers)
     save_qa(displays)
-    save_movable_preview(displays)
+    save_mouth_expressions(layers)
+    save_movable_preview(layers, scenarios)
     if args.stage == "all":
         create_psd(layers)
         save_stats(layers, subject, scenarios, seam_masks)
