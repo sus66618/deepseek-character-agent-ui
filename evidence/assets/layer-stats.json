@@ -1,0 +1,328 @@
+{
+  "canvas": {
+    "width": 1024,
+    "height": 1536
+  },
+  "originalSha256": "24DF7985AE880E21CB5EB7FF6C811631C00CEFC82F9BE4C91D580350C61A79D5",
+  "subjectSha256": "01519D11A7CC15BB23A2EF324CE27B8EDCC01C7DCB9F4BA62855E72E7D385A82",
+  "method": "manual-calibrated-masks-plus-local-telea-inpainting",
+  "layers": [
+    {
+      "name": "back-hair",
+      "sha256": "91DD02D534971B28670E1E2D774703C723A62AF6E830D749D3462E2B4DAEE1E4",
+      "nonTransparentPixels": 49781,
+      "fullyOpaquePixels": 34367,
+      "bbox": [
+        238,
+        266,
+        910,
+        697
+      ]
+    },
+    {
+      "name": "tail",
+      "sha256": "9DEA59CBF28408D550A36FDBE4AD0ACD838AB0A332E552FF2168A91E33BFA435",
+      "nonTransparentPixels": 70887,
+      "fullyOpaquePixels": 61626,
+      "bbox": [
+        519,
+        559,
+        900,
+        1373
+      ]
+    },
+    {
+      "name": "torso",
+      "sha256": "A89D03D817EB4DADCB67DE8CACCF5AD13981B71A1E1934B7CDCEB821A1567C72",
+      "nonTransparentPixels": 285070,
+      "fullyOpaquePixels": 270282,
+      "bbox": [
+        215,
+        121,
+        895,
+        1481
+      ]
+    },
+    {
+      "name": "head-base",
+      "sha256": "74D8F1706EAE0309FF9DB9E08275E8057A2230E4A342F31691D1811659B819AD",
+      "nonTransparentPixels": 23938,
+      "fullyOpaquePixels": 20638,
+      "bbox": [
+        421,
+        216,
+        608,
+        408
+      ]
+    },
+    {
+      "name": "eye-left-white",
+      "sha256": "4440E4C6892DBEA64138EE56D0DAA062E8F8B75A873E0867249C5DA97A7D6AC5",
+      "nonTransparentPixels": 2194,
+      "fullyOpaquePixels": 1776,
+      "bbox": [
+        435,
+        268,
+        487,
+        325
+      ]
+    },
+    {
+      "name": "eye-left-iris",
+      "sha256": "1761803BCF7F405EB448B7D9D6B349BC1E3E6FB37A64A4A1FC4BB7928CCC4041",
+      "nonTransparentPixels": 1677,
+      "fullyOpaquePixels": 1421,
+      "bbox": [
+        444,
+        272,
+        485,
+        324
+      ]
+    },
+    {
+      "name": "eye-left-upper-lid",
+      "sha256": "C18BFEA0FE3F07B26F2E6699CD206D38D48AA895F9CA8F802EAF48CB5D714B62",
+      "nonTransparentPixels": 1080,
+      "fullyOpaquePixels": 854,
+      "bbox": [
+        435,
+        268,
+        484,
+        304
+      ]
+    },
+    {
+      "name": "eye-right-white",
+      "sha256": "0DDB25E7606D4B7C49C40EB6503040858C59C4172C2C8BFAFF1751D4DF05F340",
+      "nonTransparentPixels": 2440,
+      "fullyOpaquePixels": 1998,
+      "bbox": [
+        508,
+        262,
+        563,
+        322
+      ]
+    },
+    {
+      "name": "eye-right-iris",
+      "sha256": "7762F51AD4917EFA359ED41B61CCD6C80AA6ED0B83C7D98DC76158BC5943219D",
+      "nonTransparentPixels": 1755,
+      "fullyOpaquePixels": 1491,
+      "bbox": [
+        520,
+        266,
+        561,
+        321
+      ]
+    },
+    {
+      "name": "eye-right-upper-lid",
+      "sha256": "0C89DD9ADE2D9C926770FB61AE4AC0BDF3AD3687A3EA5C294D2CF110DACE5C66",
+      "nonTransparentPixels": 1602,
+      "fullyOpaquePixels": 1330,
+      "bbox": [
+        508,
+        262,
+        563,
+        300
+      ]
+    },
+    {
+      "name": "brow-left",
+      "sha256": "52A0EA37186FAE169C41C9D860ECB1E1881CD04004DDD26ADBD59B9EC775B3CE",
+      "nonTransparentPixels": 87,
+      "fullyOpaquePixels": 0,
+      "bbox": [
+        441,
+        255,
+        485,
+        262
+      ]
+    },
+    {
+      "name": "brow-right",
+      "sha256": "0927C5124932226DA3382F2286D8853DA8ECB59670A3F6F594B39EACB2B33E5A",
+      "nonTransparentPixels": 86,
+      "fullyOpaquePixels": 0,
+      "bbox": [
+        513,
+        253,
+        556,
+        260
+      ]
+    },
+    {
+      "name": "mouth-neutral",
+      "sha256": "11F5562885E507C4A00DCE6CCD9DADFA69335349F407C9895F26D16CA96BD171",
+      "nonTransparentPixels": 1726,
+      "fullyOpaquePixels": 1198,
+      "bbox": [
+        467,
+        335,
+        534,
+        389
+      ]
+    },
+    {
+      "name": "mouth-smile",
+      "sha256": "4EE7B37F866F3858EDDEABC110A8EDE23BF05308094AF94F53156C9B773740EC",
+      "nonTransparentPixels": 609,
+      "fullyOpaquePixels": 284,
+      "bbox": [
+        468,
+        363,
+        532,
+        382
+      ]
+    },
+    {
+      "name": "mouth-talk",
+      "sha256": "B969AD63431E6FDAD0EFF277CE8DE31117E5E40284203D89823CEBAADE5B8CA4",
+      "nonTransparentPixels": 1842,
+      "fullyOpaquePixels": 1358,
+      "bbox": [
+        477,
+        339,
+        524,
+        389
+      ]
+    },
+    {
+      "name": "mouth-worried",
+      "sha256": "03479D2DE95D7B1D906FE7D361126E4E18A46C867C8970FC0356F9630F0D27F3",
+      "nonTransparentPixels": 253,
+      "fullyOpaquePixels": 253,
+      "bbox": [
+        470,
+        354,
+        530,
+        368
+      ]
+    },
+    {
+      "name": "front-hair",
+      "sha256": "8F12D15CCE468D295461CF68BC07BC2569CAA2549128A6A8FFF2A1A85782D4E2",
+      "nonTransparentPixels": 33613,
+      "fullyOpaquePixels": 28214,
+      "bbox": [
+        381,
+        72,
+        638,
+        324
+      ]
+    },
+    {
+      "name": "side-hair-left",
+      "sha256": "C773AACEAD014FBA0080772B55D0272E83C02ED1AB52FE5D7D94719466634EB9",
+      "nonTransparentPixels": 12023,
+      "fullyOpaquePixels": 8549,
+      "bbox": [
+        314,
+        252,
+        501,
+        451
+      ]
+    },
+    {
+      "name": "side-hair-right",
+      "sha256": "BB149C7F3E416E58523930FB888403FFE831EBF5B69ABD9B9DE384BF514B74CC",
+      "nonTransparentPixels": 31687,
+      "fullyOpaquePixels": 26308,
+      "bbox": [
+        504,
+        238,
+        722,
+        645
+      ]
+    },
+    {
+      "name": "hand-front",
+      "sha256": "125ADF5F9DD143CBDFAACA8DAAD2DC858E9C548813DEA3B232367EC6E557B0FE",
+      "nonTransparentPixels": 35159,
+      "fullyOpaquePixels": 28323,
+      "bbox": [
+        246,
+        395,
+        560,
+        674
+      ]
+    },
+    {
+      "name": "core",
+      "sha256": "1B5A59C964F1D2024F24396EFD613E6659CC78C24688C8DAA09F1A4893DAC297",
+      "nonTransparentPixels": 13983,
+      "fullyOpaquePixels": 9018,
+      "bbox": [
+        266,
+        365,
+        397,
+        503
+      ]
+    },
+    {
+      "name": "bubbles",
+      "sha256": "5C717A48270B67994E0ACA0CB457117850C27E8A41BAFBEEE38E126CA57ACE07",
+      "nonTransparentPixels": 9687,
+      "fullyOpaquePixels": 2342,
+      "bbox": [
+        66,
+        106,
+        922,
+        1159
+      ]
+    },
+    {
+      "name": "sonar",
+      "sha256": "2BFDBD0C02919E51069BA45D215497A8D8CD21AC47D2250B7480B0A15F7D6ED2",
+      "nonTransparentPixels": 30916,
+      "fullyOpaquePixels": 0,
+      "bbox": [
+        123,
+        0,
+        904,
+        1450
+      ]
+    }
+  ],
+  "neutralComparison": {
+    "meanAbsoluteError": 0.207087,
+    "p95AbsoluteError": 0,
+    "subjectCoverageRatio": 1.0
+  },
+  "seamScenarios": {
+    "blink": {
+      "transparentHolePixels": 0,
+      "disconnectedRequiredParts": 0,
+      "anchorOverlapPixels": 0
+    },
+    "gaze": {
+      "transparentHolePixels": 0,
+      "disconnectedRequiredParts": 0,
+      "anchorOverlapPixels": 0
+    },
+    "hair": {
+      "transparentHolePixels": 0,
+      "disconnectedRequiredParts": 0,
+      "anchorOverlapPixels": 7947,
+      "originalPositionGhostPixels": 0,
+      "rawExactMatchPixelCandidates": 148,
+      "largestExactMatchComponent": 42
+    },
+    "hand": {
+      "transparentHolePixels": 0,
+      "disconnectedRequiredParts": 0,
+      "anchorOverlapPixels": 17362,
+      "originalPositionGhostPixels": 0,
+      "rawExactMatchPixelCandidates": 84,
+      "largestExactMatchComponent": 57
+    },
+    "tail": {
+      "transparentHolePixels": 0,
+      "disconnectedRequiredParts": 0,
+      "anchorOverlapPixels": 10824,
+      "originalPositionGhostPixels": 0,
+      "rawExactMatchPixelCandidates": 0,
+      "largestExactMatchComponent": 0
+    }
+  }
+}

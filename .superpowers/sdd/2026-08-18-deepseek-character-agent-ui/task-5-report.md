@@ -258,3 +258,99 @@ npm run typecheck
 - matte 达到当前 UI 合成可用质量，但不是人工逐像素绘制的影视级 rotoscope；在深色底 200% 下，少量极淡发梢、发卷和浅色衣缘仍可见约 1–2 px 的源图浅色 fringe。等效面积已量化为 `487.2275` 个全不透明像素，没有把它包装成“零 halo”。
 - `81` 个内部透明洞是按阈值连通域统计，不代表 `81` 个缺陷；最大的洞均是卷发环之间的设计留白。若未来动画会大幅拉开头发层，仍应针对具体 layer seam 重新检查，而不能沿用本 matte 的静态结论。
 - 本次只解除透明主体 matte 这一项阻塞。23 层、分组 PSD、层级 manifest 与六类 seam QA 仍属于后续 Task 5 工作，未在本提交中伪造。
+
+---
+
+## 2026-08-20 Task 5B：完整分层资产包
+
+状态：`PASS（完整 Task 5）`
+
+本节基于已过审的 `subject-rgba.png` 继续完成 Task 5B，并取代报告开头针对旧失败路线的整体 `BLOCKED` 结论。Task 5A 的 matte 事实与 concerns 仍保留，不被删除或改写。
+
+### 最终交付
+
+- `assets/character/deepseek-v2/layers/*.png`：严格 23 张、每张 `1024×1536 RGBA`，均有非空语义 alpha，文件哈希两两不同。
+- `assets/character/deepseek-v2/source/deepseek-v2-layered.psd`：`9799750` bytes，可由 `psd-tools 1.18.0` 重新打开；顶层严格为 `back`、`body`、`head`、`face`、`front`、`props`、`effects` 七组，23 个命名像素层均位于指定组内。
+- `assets/character/deepseek-v2/character.manifest.json`：schema `1`、画布 `1024×1536`、23 个唯一整数 zIndex、归一化 anchor、已知 motionGroup 与 `required=true`。
+- `scripts/validate-character-assets.mjs`：fail-closed CLI validator。
+- `evidence/assets/{neutral,blink,gaze-extremes,hair-offset,hand-offset,tail-offset}.png`：六类 full-size seam QA。
+- `evidence/assets/movable-layer-preview.png`：`1920×1080` 用户预览 contact sheet。
+- `evidence/assets/layer-stats.json`：逐层哈希、非透明像素、bbox、中性重合度与 seam 指标。
+
+### 分层与补底方法
+
+本阶段没有调用 built-in `image_gen`、图像 CLI/API、密钥服务或上传服务。输入只使用已批准且哈希固定的 `subject-rgba.png` 和不可变 `original.png`。构建脚本用人工校准多边形、颜色门限、连通域和保留源 alpha 的羽化完成语义分割；所有代码注释为中文。
+
+遮挡恢复使用本地 OpenCV Telea inpainting，并只作用于显式遮挡区：脸底移除眼、眉、嘴和刘海遮挡；躯干补出前发和双手/前臂移动后暴露的衣料；尾巴层把误被复制到尾根的发梢替换为尾身底色。尾巴 QA 锁定裙摆遮挡下的根部，从 `y=980` 后平滑增加到 `8 px` 位移，避免原先根部上层与 warp 之间的裂缝。
+
+中性合成相对已批准主体的实测结果：
+
+| 指标 | 实测值 |
+| --- | ---: |
+| RGB mean absolute error | `0.207087` |
+| RGB p95 absolute error | `0` |
+| 主体覆盖率 | `1.0` |
+
+23 层非透明像素从双眉的 `86/87 px` 到 torso 的 `285070 px` 不等；不存在空白层、整画布层或字节完全重复层。每层在 `alpha=0` 区域的 RGB 也被强制清零，防止把整张源图藏在透明像素中；23 张 PNG 合计 `1521163` bytes。完整逐层记录见 `layer-stats.json`。
+
+### validator 失败契约
+
+validator 会在成功前逐项验证 JSON/schema、固定画布、精确清单与顺序、路径不越界（含真实路径/链接检查）、文件存在、唯一整数 zIndex、anchor、motionGroup、`required=true`、PNG 结构、尺寸、显式 alpha、可解码的 8-bit 非隔行像素、非空 alpha、非整画布 alpha 与重复文件内容。
+
+Vitest 真实负例覆盖并通过：
+
+- 缺文件：`MISSING_FILE`
+- 重复 zIndex：`DUPLICATE_Z_INDEX`
+- 错误尺寸：`INVALID_DIMENSIONS`
+- 无显式 alpha：`MISSING_ALPHA`
+- anchor 越界：`INVALID_ANCHOR`
+- 未知 motion group：`UNKNOWN_MOTION_GROUP`
+
+### 六图逐张人工视觉 QA
+
+以下六张均在最终全量重建后逐张使用 `view_image` 实际查看，不以脚本 PASS 代替视觉结论：
+
+| 文件 | 具体视觉结论 |
+| --- | --- |
+| `neutral.png` | 双耳、卷发负空间、脸、双手、裙边、双靴、尾身与双尾鳍均完整；棋盘底未穿入实体，中性层对齐，无新透明洞或重复轮廓。 |
+| `blink.png` | 两侧闭眼弧线落在原眼窝内，眼白/虹膜原位内容完全隐藏；脸底连续，没有眼洞、虹膜 ghost 或断裂眼线。 |
+| `gaze-extremes.png` | 左右两端虹膜位移方向清楚，均被各自眼白 alpha 限制；两眼同步且没有原位虹膜残留、眼白破口或跨眼溢出。 |
+| `hair-offset.png` | 刘海 `2 px`、后发 `4 px`、两侧卷发 `6 px` 分层错位可见；发根仍贴合头部，右侧披肩/尾根处旧 `204 px` 发梢 ghost 已消失，卷发之间仍保持真实透明负空间。 |
+| `hand-offset.png` | 双手与前臂整体 `(+4,-3) px` 后，手指、袖口、发光 core 接触关系仍连贯；衣料补底覆盖原位置，没有手部 ghost、透明楔形洞或断肢。 |
+| `tail-offset.png` | 尾根固定、尾身后段渐变到 `8 px`；裙摆下连接连续，修复前的深色纵向裂缝已消失，双尾鳍和外轮廓无断裂或明显色跳。 |
+
+机器 seam 指标与人工结论一致：blink/gaze/hair/hand/tail 的 `transparentHolePixels=0`、`disconnectedRequiredParts=0`；hair/hand/tail 的 `originalPositionGhostPixels=0`。hair、hand、tail 的锚区搭接分别为 `7947`、`17362`、`10824 px`。
+
+`movable-layer-preview.png` 也已用 `view_image` 检查：标题、六张卡片、动作标签、棋盘透明背景和人物缩略图均完整，无裁切、重叠或缺图。
+
+### 最终验证
+
+```text
+node scripts/validate-character-assets.mjs
+ASSET_VALIDATION=PASS LAYERS=23
+```
+
+```text
+npm test
+Test Files  5 passed (5)
+Tests       45 passed (45)
+```
+
+```text
+python -s -m unittest discover -s tests/python -v
+Ran 13 tests
+OK
+```
+
+```text
+npm run typecheck
+退出码 0
+```
+
+全量 Vitest 首次运行曾把 `tests/e2e/preview-smoke.spec.ts` 错当作单元测试并由 Playwright 拒绝。根因是 `vitest.config.ts` 未限定测试目录；现已最小化为只包含 `tests/unit/**/*.test.ts`，Playwright e2e 内容没有被删除或篡改。
+
+### 保留 concerns
+
+- 这是面向当前 UI 小幅 idle 动画的确定性分层，不是影视级逐帧 rotoscope。刘海 QA 刻意限制为 `2 px`；在 200% 近看，额头补底仍可能看到极轻微纹理差异。若未来要做大幅甩发、转头或超过当前位移的动作，应重新绘制隐藏面，不能外推本次 PASS。
+- Task 5A 已记录的源 matte 约 `1–2 px` 浅色 fringe 仍是输入上限；本阶段没有把该既有边缘事实包装成零 halo。
+- Python 图像构建依赖位于任务临时目录 `C:/Users/UserX/AppData/Local/Temp/codex-task5b-python`，使用 Python `3.11.15 -s`、OpenCV headless `4.12.0.88`、Pillow `12.3`、NumPy `2.2.6`、psd-tools `1.18.0`。已提交构建脚本和统计结果，但没有把这些临时 wheel/vendor 文件写入仓库。

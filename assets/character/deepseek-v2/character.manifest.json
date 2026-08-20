@@ -160,7 +160,7 @@
     {
       "name": "hand-front",
       "file": "layers/hand-front.png",
-      "zIndex": 80,
+      "zIndex": 90,
       "anchor": { "x": 0.33, "y": 0.33 },
       "motionGroup": "hand",
       "required": true
@@ -168,7 +168,7 @@
     {
       "name": "core",
       "file": "layers/core.png",
-      "zIndex": 90,
+      "zIndex": 80,
       "anchor": { "x": 0.32, "y": 0.267 },
       "motionGroup": "prop",
       "required": true
@@ -176,7 +176,7 @@
     {
       "name": "bubbles",
       "file": "layers/bubbles.png",
-      "zIndex": 101,
+      "zIndex": 100,
       "anchor": { "x": 0.5, "y": 0.5 },
       "motionGroup": "effects",
       "required": true
