@@ -7,3 +7,5 @@ playwright-report/
 .superpowers/
 evidence/runtime/
 assets/character/deepseek-v2/source/*.psd~
+__pycache__/
+*.py[cod]
