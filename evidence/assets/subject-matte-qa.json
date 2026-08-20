@@ -1,0 +1,377 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "scope": "Task 5A transparent subject matte only; no layer pack or PSD",
+  "source": {
+    "canonicalPath": "E:/adventure/ai_code/codex_image/character/ai-anime-girl-deepseek-v2.png",
+    "copiedPath": "assets/character/deepseek-v2/source/original.png",
+    "sha256": "24DF7985AE880E21CB5EB7FF6C811631C00CEFC82F9BE4C91D580350C61A79D5",
+    "bytes": 2082244,
+    "dimensions": [
+      1024,
+      1536
+    ],
+    "immutableEvidencePath": "evidence/asset-source.json"
+  },
+  "model": {
+    "architecture": "ISNetDIS",
+    "rembgModelName": "isnet-anime",
+    "upstreamRepository": "https://github.com/SkyTNT/anime-segmentation",
+    "officialModelPage": "https://huggingface.co/skytnt/anime-seg/blob/main/isnetis.onnx",
+    "rembgReleaseArtifact": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx",
+    "license": "Apache-2.0",
+    "sha256": "F15622D853E8260172812B657053460E20806F04B9E05147D49AF7BED31A6E99",
+    "md5": "6F184E756BB3BD901C8849220A83E38E",
+    "bytes": 176069933,
+    "providers": [
+      "CPUExecutionProvider"
+    ],
+    "rembgVersion": "2.0.75",
+    "onnxruntimeVersion": "1.29.0",
+    "inferenceSeconds": 3.27,
+    "sourceImageNetworkTransmission": false
+  },
+  "refinement": {
+    "alphaMatting": {
+      "foregroundThreshold": 235,
+      "backgroundThreshold": 5,
+      "erodeStructureSize": 3
+    },
+    "primarySubjectThreshold": 16,
+    "groundReflectionCleanup": {
+      "guide": "raw isnet-anime primary component",
+      "scanStartRow": 1320,
+      "applyStartRow": 1400,
+      "confidenceThreshold": 248,
+      "edgeMarginPixels": 3
+    }
+  },
+  "output": {
+    "path": "assets/character/deepseek-v2/source/subject-rgba.png",
+    "sha256": "01519D11A7CC15BB23A2EF324CE27B8EDCC01C7DCB9F4BA62855E72E7D385A82",
+    "mode": "RGBA",
+    "dimensions": [
+      1024,
+      1536
+    ],
+    "rgbExactMatchWithSource": true
+  },
+  "measurements": {
+    "alpha": {
+      "nonTransparentPixels": 493417,
+      "fullyOpaquePixels": 441597,
+      "softAlphaPixels": 51820,
+      "foregroundPixelsAt128": 468033,
+      "foregroundComponentCountAt128": 41,
+      "largestForegroundComponentPixelsAt128": 467862,
+      "largestForegroundComponentRatioAt128": 0.9996346411470987,
+      "internalHoleCount": 81,
+      "internalHolePixels": 8005,
+      "alphaExtrema": [
+        0,
+        255
+      ]
+    },
+    "largestInternalHolesAt128": [
+      {
+        "pixels": 2242,
+        "bboxInclusive": [
+          807,
+          543,
+          870,
+          599
+        ]
+      },
+      {
+        "pixels": 1933,
+        "bboxInclusive": [
+          765,
+          617,
+          823,
+          664
+        ]
+      },
+      {
+        "pixels": 1587,
+        "bboxInclusive": [
+          829,
+          484,
+          894,
+          531
+        ]
+      },
+      {
+        "pixels": 984,
+        "bboxInclusive": [
+          674,
+          358,
+          711,
+          405
+        ]
+      },
+      {
+        "pixels": 362,
+        "bboxInclusive": [
+          280,
+          379,
+          307,
+          426
+        ]
+      },
+      {
+        "pixels": 237,
+        "bboxInclusive": [
+          364,
+          358,
+          381,
+          374
+        ]
+      },
+      {
+        "pixels": 132,
+        "bboxInclusive": [
+          379,
+          241,
+          394,
+          271
+        ]
+      },
+      {
+        "pixels": 108,
+        "bboxInclusive": [
+          625,
+          646,
+          650,
+          666
+        ]
+      },
+      {
+        "pixels": 88,
+        "bboxInclusive": [
+          630,
+          226,
+          641,
+          265
+        ]
+      },
+      {
+        "pixels": 77,
+        "bboxInclusive": [
+          382,
+          356,
+          393,
+          369
+        ]
+      },
+      {
+        "pixels": 29,
+        "bboxInclusive": [
+          742,
+          675,
+          750,
+          686
+        ]
+      },
+      {
+        "pixels": 27,
+        "bboxInclusive": [
+          389,
+          226,
+          396,
+          239
+        ]
+      }
+    ],
+    "edgeHaloRisk": {
+      "lowAlphaLimitExclusive": 32,
+      "lowAlphaPixelCount": 12909,
+      "lowAlphaPalePixelCount": 11672,
+      "lowAlphaPaleEquivalentOpaquePixels": 487.2274509803922,
+      "foregroundFringePixels": 25384,
+      "foregroundFringeDistancePixels": {
+        "p50": 2.0,
+        "p90": 5.599999904632568,
+        "p95": 7.796899795532227,
+        "p99": 11.996898651123047,
+        "maximum": 19.384496688842773
+      }
+    },
+    "residualBackground": {
+      "detachedMattePixelsRemoved": 3689,
+      "groundReflectionPixelsRemoved": 8072,
+      "foregroundDetachedPixelsAt128": 171,
+      "nonTransparentPixelsBelowRow1490": 0
+    },
+    "criticalRegionRetention": {
+      "earsAndCurls": {
+        "bboxExclusive": [
+          260,
+          35,
+          930,
+          470
+        ],
+        "rawHighConfidencePixels": 92584,
+        "lostBelowFinal128Pixels": 276,
+        "lossRatio": 0.0029810766439125553
+      },
+      "fingersAndHands": {
+        "bboxExclusive": [
+          180,
+          300,
+          760,
+          760
+        ],
+        "rawHighConfidencePixels": 167112,
+        "lostBelowFinal128Pixels": 11,
+        "lossRatio": 6.582411795681937e-05
+      },
+      "capeAndSkirts": {
+        "bboxExclusive": [
+          175,
+          430,
+          800,
+          1110
+        ],
+        "rawHighConfidencePixels": 263754,
+        "lostBelowFinal128Pixels": 15,
+        "lossRatio": 5.687117541345345e-05
+      },
+      "boots": {
+        "bboxExclusive": [
+          280,
+          1080,
+          700,
+          1536
+        ],
+        "rawHighConfidencePixels": 55613,
+        "lostBelowFinal128Pixels": 103,
+        "lossRatio": 0.0018520849441677305
+      },
+      "tailAndFins": {
+        "bboxExclusive": [
+          540,
+          650,
+          970,
+          1485
+        ],
+        "rawHighConfidencePixels": 121139,
+        "lostBelowFinal128Pixels": 43,
+        "lossRatio": 0.00035496413211269696
+      }
+    }
+  },
+  "qaImages": [
+    {
+      "kind": "dark",
+      "path": "evidence/assets/matte-dark-200.png",
+      "dimensions": [
+        2048,
+        3072
+      ],
+      "scalePercent": 200
+    },
+    {
+      "kind": "light",
+      "path": "evidence/assets/matte-light-200.png",
+      "dimensions": [
+        2048,
+        3072
+      ],
+      "scalePercent": 200
+    },
+    {
+      "kind": "checker",
+      "path": "evidence/assets/matte-checker-200.png",
+      "dimensions": [
+        2048,
+        3072
+      ],
+      "scalePercent": 200
+    },
+    {
+      "kind": "detail-ears-curls-checker",
+      "path": "evidence/assets/matte-detail-ears-curls-checker-200.png",
+      "sourceBboxExclusive": [
+        260,
+        35,
+        930,
+        470
+      ],
+      "dimensions": [
+        1340,
+        870
+      ],
+      "scalePercent": 200
+    },
+    {
+      "kind": "detail-hands-cape-checker",
+      "path": "evidence/assets/matte-detail-hands-cape-checker-200.png",
+      "sourceBboxExclusive": [
+        180,
+        300,
+        800,
+        800
+      ],
+      "dimensions": [
+        1240,
+        1000
+      ],
+      "scalePercent": 200
+    },
+    {
+      "kind": "detail-skirts-checker",
+      "path": "evidence/assets/matte-detail-skirts-checker-200.png",
+      "sourceBboxExclusive": [
+        180,
+        680,
+        820,
+        1110
+      ],
+      "dimensions": [
+        1280,
+        860
+      ],
+      "scalePercent": 200
+    },
+    {
+      "kind": "detail-boots-checker",
+      "path": "evidence/assets/matte-detail-boots-checker-200.png",
+      "sourceBboxExclusive": [
+        280,
+        1080,
+        700,
+        1536
+      ],
+      "dimensions": [
+        840,
+        912
+      ],
+      "scalePercent": 200
+    },
+    {
+      "kind": "detail-tail-fins-checker",
+      "path": "evidence/assets/matte-detail-tail-fins-checker-200.png",
+      "sourceBboxExclusive": [
+        540,
+        650,
+        970,
+        1485
+      ],
+      "dimensions": [
+        860,
+        1670
+      ],
+      "scalePercent": 200
+    }
+  ],
+  "gates": {
+    "sourceHashLocked": true,
+    "modelHashLocked": true,
+    "cpuOnlyInference": true,
+    "rgba1024x1536": true,
+    "rgbExactlyFromSource": true,
+    "primaryConnectivityAt128": true,
+    "groundReflectionCleared": true,
+    "criticalRegionRetention": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "algorithm": "SHA-256",
+  "expectedSha256": "24DF7985AE880E21CB5EB7FF6C811631C00CEFC82F9BE4C91D580350C61A79D5",
+  "sourcePath": "E:/adventure/ai_code/codex_image/character/ai-anime-girl-deepseek-v2.png",
+  "copiedPath": "assets/character/deepseek-v2/source/original.png",
+  "sourceSha256": "24DF7985AE880E21CB5EB7FF6C811631C00CEFC82F9BE4C91D580350C61A79D5",
+  "copiedSha256": "24DF7985AE880E21CB5EB7FF6C811631C00CEFC82F9BE4C91D580350C61A79D5",
+  "matching": true,
+  "bytes": 2082244,
+  "dimensions": {
+    "width": 1024,
+    "height": 1536
+  }
+}
